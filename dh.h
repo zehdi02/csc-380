@@ -10,7 +10,6 @@
 #define BYTES2Z(x,buf,len) mpz_import(x,len,-1,1,0,0,buf)
 #define Z2BYTES(buf,len,x) mpz_export(buf,&len,-1,1,0,0,x)
 
-
 extern mpz_t q; /** "small" prime; should be 256 bits or more */
 extern mpz_t p; /** "large" prime; should be 2048 bits or more, with q|(p-1) */
 extern mpz_t g; /** generator of the subgroup of order q */

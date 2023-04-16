@@ -22,6 +22,11 @@ using std::deque;
 using std::pair;
 #include "dh.h"
 
+#include <cstdlib>
+#include <ctime>
+
+#define BUFFER_SIZE 1024
+
 static pthread_t trecv;     /* wait for incoming messagess and post to queue */
 void* recvMsg(void*);       /* for trecv */
 static pthread_t tcurses;   /* setup curses and draw messages from queue */
@@ -86,27 +91,57 @@ int initServerNet(int port)
 	fprintf(stderr, "connection made, starting session...\n");
 	/* at this point, should be able to send/recv on sockfd */
 
-	NEWZ(sk_server);
-	NEWZ(pk_server);
-	dhGen(sk_server, pk_server);
+	// Handshake Protocol
 
-	NEWZ(pk_client);
-
-	size_t Bpklen = mpz_size(pk_server);
-    if (send(sockfd, pk_server, Bpklen, 0) == -1) {
-        error("ERROR sending DH public key");
-    }
-
-	size_t Bpklen = mpz_size(pk_server);
-	if (recv(sockfd, pk_server, Bpklen, 0) == -1) {
-	    error("ERROR receiving DH public key");
+	// Server receives SYN
+	size_t SYN, ACK;
+	if (recv(sockfd, &SYN, sizeof(SYN), 0) == -1) {
+		error("Server failed to receive SYN from Client.");
 	}
-	printf("Received DH server public key: %Zd\n", pk_server);
 
-	// Compute shared secret key
-    const size_t klen = 128;
-    unsigned char kA[klen];
-    dhFinal(sk_server, pk_server, pk_client, kA, klen);
+	// Server sends SYNC+ACK to Client
+	ACK = SYN + 1;
+	srand(time(nullptr));
+	SYN = rand() % 1000000 + 100000;
+	if (send(sockfd, &SYN, sizeof(SYN), 0) == -1) {
+		error("Client failed to send SYN to Server.");
+	}
+	if (send(sockfd, &ACK, sizeof(ACK), 0) == -1) {
+		error("Server failed to send ACK to Client.");
+	}
+
+	// Server receives ACK from Client
+	if (recv(sockfd, &ACK, sizeof(ACK), 0) == -1) {
+		error("Server failed to receive ACK from Client.");
+	}
+
+	/////////////////////////////////////////////////////////
+	// DH
+	// NEWZ(server_pubKey);
+	// NEWZ(server_secKey);
+	// dhGen(server_secKey, server_pubKey);
+
+	// NEWZ(pk_client);
+
+	// // send Server's Public key to Client
+	// unsigned char buf[pLen];
+	// size_t bufLen = sizeof(buf);
+	// Z2BYTES(buf, bufLen, server_pubKey);
+    // if (send(sockfd, server_pubKey, bufLen, 0) == -1) {
+    //     error("ERROR sending DH public key");
+    // }
+
+	// // receive client's public key
+	// bzero(buf, bufLen);
+	// if (recv(sockfd, pk_client, client_pubKey, 0) == -1) {
+	//     error("ERROR receiving DH public key");
+	// }
+	// printf("Received DH client's public key: %Zd\n", pk_client);
+
+	// // Compute shared secret key
+    // const size_t klen = 128;
+    // unsigned char kA[klen];
+    // dhFinal(sk_server, pk_server, pk_client, kA, klen);
 
 
 	return 0;
@@ -133,39 +168,64 @@ static int initClientNet(char* hostname, int port)
 		error("ERROR connecting");
 	/* at this point, should be able to send/recv on sockfd */
 
-	init("params");
+	// Handshake Protocol
 
-	// gen client's sk and pk, and also server's pk
-	NEWZ(sk_client);
-	NEWZ(pk_client);
-	dhGen(sk_client, pk_client);
+	srand(time(nullptr));
+	size_t SYN = rand() % 1000000 + 10000;
 
-	NEWZ(pk_server);
-
-	/* Send public key to server */
-	unsigned char pk_client_buf[pLen];
-	Z2BYTES(pk_client_buf, pLen, pk_client);
-	if (send(sockfd, pk_client_buf, pLen, 0) == -1) {
-		perror("client: send");
-		close(sockfd);
-		return -1;
+	// Client sends SYN to Server
+	if (send(sockfd, &SYN, sizeof(SYN), 0) == -1) {
+		error("Client failed to send SYN to Server.");
 	}
 
-	/* Receive public key from server */
-	unsigned char pk_yours_buf[pLen];
-	if (recv(sockfd, pk_yours_buf, pLen, 0) == -1) {
-		perror("client: recv");
-		close(sockfd);
-		return -1;
+	// Client received SYNC+ACK from Server
+	size_t ACK;
+	if (recv(sockfd, &SYN, sizeof(SYN), 0) == -1) {
+		error("Client failed to receive SYN to Server.");
+	}
+	if (recv(sockfd, &ACK, sizeof(ACK), 0) == -1) {
+		error("Client failed to receive ACK to Server.");
 	}
 
-	size_t pklen = mpz_size(pk_client);
-	const size_t klen = 128;
-	unsigned char kA[klen];
-	if (dhFinal(sk_client,pk_client,pk_server,kA,klen) == -1) {
-		fprintf(stderr, "diffie-hellman error\n");
+	// Client sends ACK to Server
+	ACK = SYN + 1;
+	if (send(sockfd, &ACK, sizeof(ACK), 0) == -1) {
+		error("Client failed to send ACK to Server.");
 	}
+
+	/////////////////////////////////////////////////////////
+	//DH
+	// init("params");
+	// // gen client's sk and pk, and also server's pk
+	// NEWZ(client_pubKey);
+	// NEWZ(client_secKey);
+	// dhGen(client_secKey, client_pubKey);
+
+	// NEWZ(pk_server);
+
+	// // /* Send public key to server */
+	// unsigned char client_pubKey_buf[pLen];
+	// Z2BYTES(client_pubKey_buf, pLen, client_pubKey);
+	// if (send(sockfd, client_pubKey_buf, pLen, 0) == -1) {
+	// 	perror("client: send");
+	// 	close(sockfd);
+	// 	return -1;
+	// }
+
+	// // receive server's public key
+	// unsigned char server_pubKey_buf[pLen];
+	// if (recv(sockfd, server_pubKey_buf, pLen, 0) == -1) {
+	// 	perror("client: recv");
+	// 	close(sockfd);
+	// 	return -1;
+	// }
 	
+	// // compute shared secret
+	// unsigned char ssKey_buf[pLen];
+	// if (dhFinal(client_secKey,client_pubKey,server_pubKey,ssKey_buf,sizeof(ssKey_buf)) == -1) {
+	// 	fprintf(stderr, "diffie-hellman error\n");
+	// }
+
 	return 0;
 }
 
