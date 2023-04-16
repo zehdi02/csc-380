@@ -22,11 +22,6 @@ using std::deque;
 using std::pair;
 #include "dh.h"
 
-mpz_t sk_server, pk_server;
-mpz_t sk_client, pk_client;
-unsigned char ss[32];
-
-
 static pthread_t trecv;     /* wait for incoming messagess and post to queue */
 void* recvMsg(void*);       /* for trecv */
 static pthread_t tcurses;   /* setup curses and draw messages from queue */
@@ -90,22 +85,29 @@ int initServerNet(int port)
 	close(listensock);
 	fprintf(stderr, "connection made, starting session...\n");
 	/* at this point, should be able to send/recv on sockfd */
-	
-	
 
-	// gen secret key and public key 
-	mpz_inits(sk_server, pk_server, NULL);
-	if (dhGen(sk_server, pk_server) < 0)
-    	error("ERROR: Diffie-Hellman key exchange failed");
+	NEWZ(sk_server);
+	NEWZ(pk_server);
+	dhGen(sk_server, pk_server);
 
-	// send server's pk to client over socket
-	int nbytes_sent = send(sockfd, mpz_export(NULL, NULL, -1, sizeof(*pk_server), 0, 0, pk_server), sizeof(*pk_server), 0);
-	if (nbytes_sent < 0)
-		error("ERROR: Failed to send server's public key");
+	NEWZ(pk_client);
 
+	size_t Bpklen = mpz_size(pk_server);
+    if (send(sockfd, pk_server, Bpklen, 0) == -1) {
+        error("ERROR sending DH public key");
+    }
 
-	if (dhFinal(sk_server, pk_server, pk_client, ss, sizeof(ss)) < 0)
-		error("ERROR: Diffie-Hellman key exchange failed");
+	size_t Bpklen = mpz_size(pk_server);
+	if (recv(sockfd, pk_server, Bpklen, 0) == -1) {
+	    error("ERROR receiving DH public key");
+	}
+	printf("Received DH server public key: %Zd\n", pk_server);
+
+	// Compute shared secret key
+    const size_t klen = 128;
+    unsigned char kA[klen];
+    dhFinal(sk_server, pk_server, pk_client, kA, klen);
+
 
 	return 0;
 }
@@ -131,29 +133,39 @@ static int initClientNet(char* hostname, int port)
 		error("ERROR connecting");
 	/* at this point, should be able to send/recv on sockfd */
 
-	// generate sk and pk for client
+	init("params");
+
+	// gen client's sk and pk, and also server's pk
+	NEWZ(sk_client);
+	NEWZ(pk_client);
+	dhGen(sk_client, pk_client);
+
+	NEWZ(pk_server);
+
+	/* Send public key to server */
+	unsigned char pk_client_buf[pLen];
+	Z2BYTES(pk_client_buf, pLen, pk_client);
+	if (send(sockfd, pk_client_buf, pLen, 0) == -1) {
+		perror("client: send");
+		close(sockfd);
+		return -1;
+	}
+
+	/* Receive public key from server */
+	unsigned char pk_yours_buf[pLen];
+	if (recv(sockfd, pk_yours_buf, pLen, 0) == -1) {
+		perror("client: recv");
+		close(sockfd);
+		return -1;
+	}
+
+	size_t pklen = mpz_size(pk_client);
+	const size_t klen = 128;
+	unsigned char kA[klen];
+	if (dhFinal(sk_client,pk_client,pk_server,kA,klen) == -1) {
+		fprintf(stderr, "diffie-hellman error\n");
+	}
 	
-
-	mpz_inits(sk_client, pk_client, pk_server, NULL);
-
-	
-
-	int nbytes_recv = recv(sockfd, mpz_export(NULL, NULL, -1, sizeof(*pk_server), 0, 0, pk_server), sizeof(*pk_server), 0);
-	if (nbytes_recv < 0)
-		error("ERROR: Failed to receive server's public key");
-	if (dhGen(sk_client, pk_client) < 0)
-		error("ERROR: Diffie-Hellman key exchange failed");
-
-	// send pk to server over the socket
-	int nbytes_sent = send(sockfd, mpz_export(NULL, NULL, -1, sizeof(*pk_client), 0, 0, pk_client), sizeof(*pk_client), 0);
-	if (nbytes_sent < 0)
-		error("ERROR: Failed to send client's public key");
-
-	// compute shared secret
-	if (dhFinal(sk_server, pk_server, pk_client, ss, sizeof(ss)) < 0)
-		error("ERROR: Diffie-Hellman key exchange failed");
-
-
 	return 0;
 }
 
@@ -387,8 +399,6 @@ static const char* usage =
 
 int main(int argc, char *argv[])
 {
-	
-
 	// define long options
 	static struct option long_opts[] = {
 		{"connect",  required_argument, 0, 'c'},
