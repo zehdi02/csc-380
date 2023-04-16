@@ -25,8 +25,6 @@ using std::pair;
 #include <cstdlib>
 #include <ctime>
 
-#define BUFFER_SIZE 1024
-
 static pthread_t trecv;     /* wait for incoming messagess and post to queue */
 void* recvMsg(void*);       /* for trecv */
 static pthread_t tcurses;   /* setup curses and draw messages from queue */
