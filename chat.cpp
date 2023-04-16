@@ -22,6 +22,11 @@ using std::deque;
 using std::pair;
 #include "dh.h"
 
+mpz_t sk_server, pk_server;
+mpz_t sk_client, pk_client;
+unsigned char ss[32];
+
+
 static pthread_t trecv;     /* wait for incoming messagess and post to queue */
 void* recvMsg(void*);       /* for trecv */
 static pthread_t tcurses;   /* setup curses and draw messages from queue */
@@ -85,6 +90,23 @@ int initServerNet(int port)
 	close(listensock);
 	fprintf(stderr, "connection made, starting session...\n");
 	/* at this point, should be able to send/recv on sockfd */
+	
+	
+
+	// gen secret key and public key 
+	mpz_inits(sk_server, pk_server, NULL);
+	if (dhGen(sk_server, pk_server) < 0)
+    	error("ERROR: Diffie-Hellman key exchange failed");
+
+	// send server's pk to client over socket
+	int nbytes_sent = send(sockfd, mpz_export(NULL, NULL, -1, sizeof(*pk_server), 0, 0, pk_server), sizeof(*pk_server), 0);
+	if (nbytes_sent < 0)
+		error("ERROR: Failed to send server's public key");
+
+
+	if (dhFinal(sk_server, pk_server, pk_client, ss, sizeof(ss)) < 0)
+		error("ERROR: Diffie-Hellman key exchange failed");
+
 	return 0;
 }
 
@@ -108,6 +130,30 @@ static int initClientNet(char* hostname, int port)
 	if (connect(sockfd,(struct sockaddr *) &serv_addr,sizeof(serv_addr)) < 0)
 		error("ERROR connecting");
 	/* at this point, should be able to send/recv on sockfd */
+
+	// generate sk and pk for client
+	
+
+	mpz_inits(sk_client, pk_client, pk_server, NULL);
+
+	
+
+	int nbytes_recv = recv(sockfd, mpz_export(NULL, NULL, -1, sizeof(*pk_server), 0, 0, pk_server), sizeof(*pk_server), 0);
+	if (nbytes_recv < 0)
+		error("ERROR: Failed to receive server's public key");
+	if (dhGen(sk_client, pk_client) < 0)
+		error("ERROR: Diffie-Hellman key exchange failed");
+
+	// send pk to server over the socket
+	int nbytes_sent = send(sockfd, mpz_export(NULL, NULL, -1, sizeof(*pk_client), 0, 0, pk_client), sizeof(*pk_client), 0);
+	if (nbytes_sent < 0)
+		error("ERROR: Failed to send client's public key");
+
+	// compute shared secret
+	if (dhFinal(sk_server, pk_server, pk_client, ss, sizeof(ss)) < 0)
+		error("ERROR: Diffie-Hellman key exchange failed");
+
+
 	return 0;
 }
 
@@ -341,6 +387,8 @@ static const char* usage =
 
 int main(int argc, char *argv[])
 {
+	
+
 	// define long options
 	static struct option long_opts[] = {
 		{"connect",  required_argument, 0, 'c'},

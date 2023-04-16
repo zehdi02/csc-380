@@ -19,6 +19,9 @@ extern size_t pBitlen; /** length of p in bits */
 extern size_t qLen; /** length of q in bytes */
 extern size_t pLen; /** length of p in bytes */
 
+#ifdef __cplusplus
+extern "C" {
+#endif
 /* NOTE: you must call init or initFromScratch before doing anything else. */
 /** Try to read q,p,g from a file: */
 int init(const char* fname);
@@ -34,3 +37,6 @@ int dhGen(mpz_t sk, mpz_t pk);
  * apply a KDF to obtain buflen bytes of key, stored in keybuf */
 int dhFinal(mpz_t sk_mine, mpz_t pk_mine, mpz_t pk_yours, unsigned char* keybuf, size_t buflen);
 /* NOTE: pk_mine is included just to avoid recomputing it from sk_mine */
+#ifdef __cplusplus
+}
+#endif
