@@ -99,7 +99,7 @@ int initServerNet(int port)
 	else {
 		printf("Server received SYN successfully!\n\n");
 	}
-	sleep(1);
+	// sleep(1);
 
 	// Server sends SYNC+ACK to Client
 	ACK = SYN + 1;
@@ -118,7 +118,7 @@ int initServerNet(int port)
 		printf("Server sent ACK successfully!\n");
 	}
 	printf("Server sent SYN+ACK successfully!\n\n");
-	sleep(1);
+	// sleep(1);
 
 	// Server receives ACK from Client
 	if (recv(sockfd, &ACK, sizeof(ACK), 0) == -1) {
@@ -127,7 +127,7 @@ int initServerNet(int port)
 	else {
 		printf("Server received ACK successfully!\n\n");
 	}
-	sleep(1);
+	// sleep(1);
 
 	printf("================================================\n\n");
 	/////////////////////////////////////////////////////////
@@ -137,7 +137,10 @@ int initServerNet(int port)
 	// Generate Server's Private and Public keys
 	NEWZ(server_secKey);
 	NEWZ(server_pubKey);
-	if (dhGen(server_secKey, server_pubKey) == 0) {
+	if (dhGen(server_secKey, server_pubKey) < 0) {
+		error("ERROR Server's secret key and public key failed to generate.");
+	} 
+	else {
 		printf("Server's Secret key and Public key generated.\n\n");
 	}
 
@@ -158,13 +161,13 @@ int initServerNet(int port)
 	unsigned char client_pk_buf[pLen];
 	size_t client_pk_len = sizeof(client_pk_buf);
 	NEWZ(client_pubKey);
-	BYTES2Z(client_pubKey, client_pk_buf, client_pk_len);
-	if (recv(sockfd, client_pubKey, client_pk_len, 0) == -1) {
+	if (recv(sockfd, client_pk_buf, client_pk_len, 0) == -1) {
         error("ERROR receiving DH client's public key");
     }
 	else {
 		printf("Client's Public key received successfully!\n\n");
 	}
+	BYTES2Z(client_pubKey, client_pk_buf, client_pk_len);
 
 	// Compute shared secret key
 	unsigned char sharedSec_key_buf[pLen];
@@ -175,6 +178,9 @@ int initServerNet(int port)
 	else {
 		printf("SUCCESS shared key!\n\n");
 	}
+
+	printf("================================================\n\n");
+
 
 	return 0;
 }
@@ -212,7 +218,7 @@ static int initClientNet(char* hostname, int port)
 	else {
 		printf("Client sent SYN successfully!\n\n");
 	}
-	sleep(1);
+	// sleep(1);
 
 	// Client received SYNC+ACK from Server
 	size_t ACK;
@@ -229,7 +235,7 @@ static int initClientNet(char* hostname, int port)
 		printf("Client received ACK successfully!\n");
 	}
 	printf("Client received SYN+ACK successfully!\n\n");
-	sleep(1);
+	// sleep(1);
 
 	// Client sends ACK to Server
 	ACK = SYN + 1;
@@ -239,7 +245,7 @@ static int initClientNet(char* hostname, int port)
 	else {
 		printf("Client sent ACK successfully!\n\n");
 	}
-	sleep(1);
+	// sleep(1);
 
 	printf("================================================\n\n");
 
@@ -250,7 +256,10 @@ static int initClientNet(char* hostname, int port)
 	// gen client's sk and pk, and also server's pk
 	NEWZ(client_secKey);
 	NEWZ(client_pubKey);
-	if (dhGen(client_secKey, client_pubKey) == 0) {
+	if (dhGen(client_secKey, client_pubKey) < 0) {
+		error("ERROR Server's secret key and public key failed to generate.");
+	}
+	else {
 		printf("Client's Secret key and Public key generated.\n\n");
 	}
 
@@ -269,13 +278,14 @@ static int initClientNet(char* hostname, int port)
 	unsigned char server_pk_buf[pLen] = {0};
 	size_t server_pk_len = pLen;
 	NEWZ(server_pubKey);
-	BYTES2Z(server_pubKey, server_pk_buf, server_pk_len);
-	if (recv(sockfd, server_pubKey, server_pk_len, 0) == -1) {
+	if (recv(sockfd, server_pk_buf, server_pk_len, 0) == -1) {
         error("ERROR receiving DH server's public key");
     }
 	else {
 		printf("Server's Public key received successfully!\n\n");
 	}
+	BYTES2Z(server_pubKey, server_pk_buf, server_pk_len);
+
 
 	// compute Shared Secret key
 	unsigned char sharedSec_key_buf[pLen];
@@ -286,6 +296,9 @@ static int initClientNet(char* hostname, int port)
 	else {
 		printf("SUCCESS shared key!\n\n");
 	}
+
+	printf("================================================\n\n");
+
 
 	return 0;
 }
