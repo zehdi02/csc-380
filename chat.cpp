@@ -147,7 +147,7 @@ int initServerNet(int port)
 	unsigned char server_pk_buf[pLen];
 	size_t server_pk_len = sizeof(server_pk_buf);
 	Z2BYTES(server_pk_buf, server_pk_len, server_pubKey);
-    if (send(sockfd, &server_pubKey, sizeof(server_pubKey), 0) == -1) {
+    if (send(sockfd, server_pk_buf, server_pk_len, 0) == -1) {
         error("ERROR sending Server's DH public key to Client");
     }
 	else {
@@ -159,7 +159,7 @@ int initServerNet(int port)
 	size_t client_pk_len = sizeof(client_pk_buf);
 	NEWZ(client_pubKey);
 	BYTES2Z(client_pubKey, client_pk_buf, client_pk_len);
-	if (recv(sockfd, client_pk_buf, client_pk_len, 0) == -1) {
+	if (recv(sockfd, client_pubKey, client_pk_len, 0) == -1) {
         error("ERROR receiving DH client's public key");
     }
 	else {
@@ -255,8 +255,8 @@ static int initClientNet(char* hostname, int port)
 	}
 
 	// send Client Public key to Server
+	size_t client_pk_len = pLen;
 	unsigned char client_pk_buf[pLen];
-	size_t client_pk_len = sizeof(client_pk_buf);
 	Z2BYTES(client_pk_buf, client_pk_len, client_pubKey);
     if (send(sockfd, client_pk_buf, client_pk_len, 0) == -1) {
         error("ERROR sending Client's DH public key to Server");
@@ -266,11 +266,11 @@ static int initClientNet(char* hostname, int port)
 	}
 
 	// receive Server's Public key
-	unsigned char server_pk_buf[pLen];
-	size_t server_pk_len = sizeof(server_pk_buf);
+	unsigned char server_pk_buf[pLen] = {0};
+	size_t server_pk_len = pLen;
 	NEWZ(server_pubKey);
 	BYTES2Z(server_pubKey, server_pk_buf, server_pk_len);
-	if (recv(sockfd, server_pk_buf, server_pk_len, 0) == -1) {
+	if (recv(sockfd, server_pubKey, server_pk_len, 0) == -1) {
         error("ERROR receiving DH server's public key");
     }
 	else {
