@@ -96,6 +96,9 @@ int initServerNet(int port)
 	if (recv(sockfd, &SYN, sizeof(SYN), 0) == -1) {
 		error("Server failed to receive SYN from Client.");
 	}
+	else {
+		printf("Server received SYN successfully!\n\n");
+	}
 
 	// Server sends SYNC+ACK to Client
 	ACK = SYN + 1;
@@ -104,43 +107,73 @@ int initServerNet(int port)
 	if (send(sockfd, &SYN, sizeof(SYN), 0) == -1) {
 		error("Client failed to send SYN to Server.");
 	}
+	else {
+		printf("Server sent SYN successfully!\n");
+	}
 	if (send(sockfd, &ACK, sizeof(ACK), 0) == -1) {
 		error("Server failed to send ACK to Client.");
 	}
+	else {
+		printf("Server sent ACK successfully!\n");
+	}
+	printf("Server sent SYN+ACK successfully!\n\n");
 
 	// Server receives ACK from Client
 	if (recv(sockfd, &ACK, sizeof(ACK), 0) == -1) {
 		error("Server failed to receive ACK from Client.");
 	}
+	else {
+		printf("Server received ACK successfully!\n\n");
+	}
 
+	printf("================================================\n\n");
 	/////////////////////////////////////////////////////////
 	// DH
-	// NEWZ(server_pubKey);
-	// NEWZ(server_secKey);
-	// dhGen(server_secKey, server_pubKey);
 
-	// NEWZ(pk_client);
+	// Generate Server's Private and Public keys
+	NEWZ(server_secKey);
+	NEWZ(server_pubKey);
+	if (dhGen(server_secKey, server_pubKey) == 0) {
+		printf("Server's Secret key and Public key generated.\n\n");
+	}
 
-	// // send Server's Public key to Client
+	// NEWZ(client_pubKey);
+
+	// send Server's Public key to Client
 	// unsigned char buf[pLen];
 	// size_t bufLen = sizeof(buf);
 	// Z2BYTES(buf, bufLen, server_pubKey);
-    // if (send(sockfd, server_pubKey, bufLen, 0) == -1) {
-    //     error("ERROR sending DH public key");
-    // }
+	unsigned char server_pk_buf[qLen];
+	size_t server_pk_len;
+	Z2BYTES(server_pk_buf, server_pk_len, server_pubKey);
+    if (send(sockfd, server_pk_buf, server_pk_len, 0) == -1) {
+        error("ERROR sending DH public key to client");
+    }
+	printf("Server's Public key sent successfully!\n\n");
 
-	// // receive client's public key
+	// receive client's public key
 	// bzero(buf, bufLen);
-	// if (recv(sockfd, pk_client, client_pubKey, 0) == -1) {
+	// unsigned char client_pubKey_buf[pLen];
+	// if (recv(sockfd, client_pubKey_buf, pLen, 0) == -1) {
 	//     error("ERROR receiving DH public key");
 	// }
-	// printf("Received DH client's public key: %Zd\n", pk_client);
+	// printf("Received DH client's public key: %Zd\n", client_pubKey);
+	unsigned char client_pk_buf[qLen];
+	if (recv(sockfd, client_pk_buf, qLen, 0) == -1) {
+        error("ERROR receiving DH client's public key");
+    }
+	NEWZ(client_pubKey);
+	BYTES2Z(client_pubKey, client_pk_buf, qLen);
 
-	// // Compute shared secret key
+	// Compute shared secret key
     // const size_t klen = 128;
     // unsigned char kA[klen];
-    // dhFinal(sk_server, pk_server, pk_client, kA, klen);
-
+    // dhFinal(server_secKey, server_pubKey, client_pubKey, kA, klen);
+	unsigned char shared_key_buf[32];
+	if (dhFinal(server_secKey, server_pubKey, client_pubKey, shared_key_buf, 32) < 0) {
+		error("ERROR shared key");
+	}
+	string shared_key(reinterpret_cast<char*>(shared_key_buf), 32);
 
 	return 0;
 }
@@ -175,54 +208,85 @@ static int initClientNet(char* hostname, int port)
 	if (send(sockfd, &SYN, sizeof(SYN), 0) == -1) {
 		error("Client failed to send SYN to Server.");
 	}
+	else {
+		printf("Client sent SYN successfully!\n\n");
+	}
 
 	// Client received SYNC+ACK from Server
 	size_t ACK;
 	if (recv(sockfd, &SYN, sizeof(SYN), 0) == -1) {
 		error("Client failed to receive SYN to Server.");
 	}
+	else {
+		printf("Client received SYN successfully!\n");
+	}
 	if (recv(sockfd, &ACK, sizeof(ACK), 0) == -1) {
 		error("Client failed to receive ACK to Server.");
 	}
+	else {
+		printf("Client received ACK successfully!\n");
+	}
+	printf("Client received SYN+ACK successfully!\n\n");
 
 	// Client sends ACK to Server
 	ACK = SYN + 1;
 	if (send(sockfd, &ACK, sizeof(ACK), 0) == -1) {
 		error("Client failed to send ACK to Server.");
 	}
+	else {
+		printf("Client sent ACK successfully!\n\n");
+	}
+
+	printf("================================================\n\n");
 
 	/////////////////////////////////////////////////////////
 	//DH
-	// init("params");
-	// // gen client's sk and pk, and also server's pk
-	// NEWZ(client_pubKey);
-	// NEWZ(client_secKey);
-	// dhGen(client_secKey, client_pubKey);
+	init("params");
+	// gen client's sk and pk, and also server's pk
+	NEWZ(client_secKey);
+	NEWZ(client_pubKey);
+	if (dhGen(client_secKey, client_pubKey) == 0) {
+		printf("Client's Secret key and Public key generated.\n\n");
+	}
 
-	// NEWZ(pk_server);
+	// NEWZ(server_pubKey);
 
-	// // /* Send public key to server */
+	// send Public key to Server
 	// unsigned char client_pubKey_buf[pLen];
 	// Z2BYTES(client_pubKey_buf, pLen, client_pubKey);
 	// if (send(sockfd, client_pubKey_buf, pLen, 0) == -1) {
-	// 	perror("client: send");
-	// 	close(sockfd);
-	// 	return -1;
+	// 	error("ERROR sending DH public key to server");
 	// }
 
-	// // receive server's public key
+	// printf("client_pubKey = %Zd\n",client_pubKey);
+	unsigned char client_pk_buf[qLen];
+	size_t client_pk_len;
+	Z2BYTES(client_pk_buf, client_pk_len, client_pubKey);
+    if (send(sockfd, client_pk_buf, client_pk_len, 0) == -1) {
+        error("ERROR sending Client's DH public key to Server");
+    }
+	printf("Client's Public key sent successfully!\n\n");
+
+	// receive server's public key
 	// unsigned char server_pubKey_buf[pLen];
 	// if (recv(sockfd, server_pubKey_buf, pLen, 0) == -1) {
 	// 	perror("client: recv");
 	// 	close(sockfd);
 	// 	return -1;
 	// }
+	unsigned char server_pk_buf[qLen];
+	if (recv(sockfd, server_pk_buf, qLen, 0) == -1) {
+        error("ERROR receiving DH server's public key");
+    }
+	NEWZ(server_pubKey);
+	BYTES2Z(server_pubKey, server_pk_buf, qLen);
 	
-	// // compute shared secret
-	// unsigned char ssKey_buf[pLen];
-	// if (dhFinal(client_secKey,client_pubKey,server_pubKey,ssKey_buf,sizeof(ssKey_buf)) == -1) {
-	// 	fprintf(stderr, "diffie-hellman error\n");
-	// }
+	// compute shared secret
+	unsigned char shared_key_buf[32];
+	if (dhFinal(client_secKey, client_pubKey, server_pubKey, shared_key_buf, 32) < 0) {
+		error("ERROR shared key");
+	}
+	string shared_key(reinterpret_cast<char*>(shared_key_buf), 32);
 
 	return 0;
 }
