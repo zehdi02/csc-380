@@ -63,6 +63,34 @@ int listensock, sockfd;
 	fail_exit("");
 }
 
+unsigned char server_sharedSec_key_global[1232];
+unsigned char client_sharedSec_key_global[1232];
+
+// Function to compare and verify shared keys
+void compareSharedKeys() {
+    // Read the shared keys from the shared memory
+    unsigned char server_shared_key[pLen];
+    unsigned char client_shared_key[pLen];
+    memcpy(server_shared_key, server_sharedSec_key_global, pLen);
+    memcpy(client_shared_key, client_sharedSec_key_global, pLen);
+
+    // Compare the shared keys
+    if (memcmp(server_shared_key, client_shared_key, pLen) == 0) {
+        printf("Server and client have the same shared key.\n\n");
+    } else {
+        printf("Server and client do not have the same shared key.\n\n");
+    }
+
+	printf("Server's key:\n");
+	for (size_t i = 0; i < pLen; i++) {
+		printf("%02x ",server_shared_key[i]);
+	}
+	printf("\n\nClient's key:\n");
+	for (size_t i = 0; i < pLen; i++) {
+		printf("%02x ",client_shared_key[i]);
+	}
+}
+
 int initServerNet(int port)
 {
 	int reuse = 1;
@@ -132,8 +160,9 @@ int initServerNet(int port)
 	printf("================================================\n\n");
 	/////////////////////////////////////////////////////////
 	// DH
-	init("params");
-
+	if (init("params") == 0) {
+		gmp_printf("Successfully read DH params:\nq = %Zd\np = %Zd\ng = %Zd\n",q,p,g);
+	}
 	// Generate Server's Private and Public keys
 	NEWZ(server_secKey);
 	NEWZ(server_pubKey);
@@ -143,8 +172,6 @@ int initServerNet(int port)
 	else {
 		printf("Server's Secret key and Public key generated.\n\n");
 	}
-
-	// NEWZ(client_pubKey);
 
 	// send Server's Public key to Client
 	unsigned char server_pk_buf[pLen];
@@ -170,17 +197,37 @@ int initServerNet(int port)
 	BYTES2Z(client_pubKey, client_pk_buf, client_pk_len);
 
 	// Compute shared secret key
-	unsigned char sharedSec_key_buf[pLen];
-	size_t sharedSec_key_len = sizeof(sharedSec_key_buf);
-	if (dhFinal(server_secKey, server_pubKey, client_pubKey, sharedSec_key_buf, sharedSec_key_len) < 0) {
+	unsigned char server_sharedSec_key_buf[pLen];
+	size_t sharedSec_key_len = sizeof(server_sharedSec_key_buf);
+	if (dhFinal(server_secKey, server_pubKey, client_pubKey, server_sharedSec_key_buf, sharedSec_key_len) < 0) {
 		error("ERROR shared key");
 	}
 	else {
 		printf("SUCCESS shared key!\n\n");
 	}
 
-	printf("================================================\n\n");
+	// Copy server's shared key to global server shared key buf to VERIFY
+	memcpy(server_sharedSec_key_global, server_sharedSec_key_buf, sharedSec_key_len);
+	// compareSharedKeys();
 
+	// Verify shared secret key are the same
+	// if (memcmp(server_sharedSec_key_buf,client_sharedSec_key_global,512) == 0) {
+	// 	printf("The Server and the Client have the same key :D\n");
+	// } else {
+	// 	printf("The Server and the Client doesn't have the same key :c\n");
+	// }
+
+	// printf("Server's key:\n");
+	// for (size_t i = 0; i < pLen; i++) {
+	// 	printf("%02x ",server_sharedSec_key_buf[i]);
+	// }
+	// printf("\n\nClient's key:\n");
+	// for (size_t i = 0; i < pLen; i++) {
+	// 	printf("%02x ",client_sharedSec_key_global[i]);
+	// }
+	
+
+	printf("\n\n================================================\n\n");
 
 	return 0;
 }
@@ -251,8 +298,9 @@ static int initClientNet(char* hostname, int port)
 
 	/////////////////////////////////////////////////////////
 	//DH
-
-	init("params");
+	if (init("params") == 0) {
+		gmp_printf("Successfully read DH params:\nq = %Zd\np = %Zd\ng = %Zd\n",q,p,g);
+	}
 	// gen client's sk and pk, and also server's pk
 	NEWZ(client_secKey);
 	NEWZ(client_pubKey);
@@ -264,8 +312,8 @@ static int initClientNet(char* hostname, int port)
 	}
 
 	// send Client Public key to Server
-	size_t client_pk_len = pLen;
 	unsigned char client_pk_buf[pLen];
+	size_t client_pk_len = sizeof(client_pk_buf);
 	Z2BYTES(client_pk_buf, client_pk_len, client_pubKey);
     if (send(sockfd, client_pk_buf, client_pk_len, 0) == -1) {
         error("ERROR sending Client's DH public key to Server");
@@ -275,8 +323,8 @@ static int initClientNet(char* hostname, int port)
 	}
 
 	// receive Server's Public key
-	unsigned char server_pk_buf[pLen] = {0};
-	size_t server_pk_len = pLen;
+	unsigned char server_pk_buf[pLen];
+	size_t server_pk_len = sizeof(server_pk_buf);
 	NEWZ(server_pubKey);
 	if (recv(sockfd, server_pk_buf, server_pk_len, 0) == -1) {
         error("ERROR receiving DH server's public key");
@@ -285,19 +333,27 @@ static int initClientNet(char* hostname, int port)
 		printf("Server's Public key received successfully!\n\n");
 	}
 	BYTES2Z(server_pubKey, server_pk_buf, server_pk_len);
-
-
+	
 	// compute Shared Secret key
-	unsigned char sharedSec_key_buf[pLen];
-	size_t sharedSec_key_len = sizeof(sharedSec_key_buf);
-	if (dhFinal(client_secKey, client_pubKey, server_pubKey, sharedSec_key_buf, sharedSec_key_len) < 0) {
+	unsigned char client_sharedSec_key_buf[pLen];
+	size_t sharedSec_key_len = sizeof(client_sharedSec_key_buf);
+	if (dhFinal(client_secKey, client_pubKey, server_pubKey, client_sharedSec_key_buf, sharedSec_key_len) < 0) {
 		error("ERROR shared key");
 	}
 	else {
 		printf("SUCCESS shared key!\n\n");
 	}
 
-	printf("================================================\n\n");
+	// Copy client's shared key to global client shared key buf to VERIFY
+	memcpy(client_sharedSec_key_global, client_sharedSec_key_buf, sharedSec_key_len);
+	// compareSharedKeys();
+
+	// printf("\n\nClient's key:\n");
+	// for (size_t i = 0; i < pLen; i++) {
+	// 	printf("%02x ",client_sharedSec_key_buf[i]);
+	// }
+
+	printf("\n\n================================================\n\n");
 
 
 	return 0;
