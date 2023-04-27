@@ -11,6 +11,7 @@
 #include <openssl/sha.h>
 #include <openssl/evp.h>
 #include <openssl/hmac.h>
+#include <openssl/err.h>
 #include <string.h>
 #include <getopt.h>
 #include <string>
@@ -23,7 +24,7 @@ using std::pair;
 #include "dh.h"
 #include <openssl/pem.h>
 #include <openssl/rsa.h>
-
+#include <openssl/kdf.h>
 #include <cstdlib>
 #include <ctime>
 
@@ -68,6 +69,102 @@ int listensock, sockfd;
 
 unsigned char server_sharedSec_key_global[1232];
 unsigned char client_sharedSec_key_global[1232];
+
+void handleErrors(void)
+{
+    ERR_print_errors_fp(stderr);
+    abort();
+}
+
+int encrypt(unsigned char *plaintext, int plaintext_len, unsigned char *key,
+            unsigned char *iv, unsigned char *ciphertext)
+{
+    EVP_CIPHER_CTX *ctx;
+
+    int len;
+
+    int ciphertext_len;
+
+    /* Create and initialise the context */
+    if (!(ctx = EVP_CIPHER_CTX_new()))
+        handleErrors();
+
+    /*
+     * Initialise the encryption operation. IMPORTANT - ensure you use a key
+     * and IV size appropriate for your cipher
+     * In this example we are using 256 bit AES (i.e. a 256 bit key). The
+     * IV size for *most* modes is the same as the block size. For AES this
+     * is 128 bits
+     */
+    if (1 != EVP_EncryptInit_ex(ctx, EVP_aes_256_cbc(), NULL, key, iv))
+        handleErrors();
+
+    /*
+     * Provide the message to be encrypted, and obtain the encrypted output.
+     * EVP_EncryptUpdate can be called multiple times if necessary
+     */
+    if (1 != EVP_EncryptUpdate(ctx, ciphertext, &len, plaintext, plaintext_len))
+        handleErrors();
+    ciphertext_len = len;
+
+    /*
+     * Finalise the encryption. Further ciphertext bytes may be written at
+     * this stage.
+     */
+    if (1 != EVP_EncryptFinal_ex(ctx, ciphertext + len, &len))
+        handleErrors();
+    ciphertext_len += len;
+
+    /* Clean up */
+    EVP_CIPHER_CTX_free(ctx);
+
+    return ciphertext_len;
+}
+
+int decrypt(unsigned char *ciphertext, int ciphertext_len, unsigned char *key,
+            unsigned char *iv, unsigned char *plaintext)
+{
+    EVP_CIPHER_CTX *ctx;
+
+    int len;
+
+    int plaintext_len;
+
+    /* Create and initialise the context */
+    if (!(ctx = EVP_CIPHER_CTX_new()))
+        handleErrors();
+
+    /*
+     * Initialise the decryption operation. IMPORTANT - ensure you use a key
+     * and IV size appropriate for your cipher
+     * In this example we are using 256 bit AES (i.e. a 256 bit key). The
+     * IV size for *most* modes is the same as the block size. For AES this
+     * is 128 bits
+     */
+    if (1 != EVP_DecryptInit_ex(ctx, EVP_aes_256_cbc(), NULL, key, iv))
+        handleErrors();
+
+    /*
+     * Provide the message to be decrypted, and obtain the plaintext output.
+     * EVP_DecryptUpdate can be called multiple times if necessary.
+     */
+    if (1 != EVP_DecryptUpdate(ctx, plaintext, &len, ciphertext, ciphertext_len))
+        handleErrors();
+    plaintext_len = len;
+
+    /*
+     * Finalise the decryption. Further plaintext bytes may be written at
+     * this stage.
+     */
+    if (1 != EVP_DecryptFinal_ex(ctx, plaintext + len, &len))
+        handleErrors();
+    plaintext_len += len;
+
+    /* Clean up */
+    EVP_CIPHER_CTX_free(ctx);
+
+    return plaintext_len;
+}
 
 // Function to compare and verify shared keys
 void compareSharedKeys()
@@ -468,42 +565,43 @@ static void msg_win_redisplay(bool batch, const string &newmsg = "", const strin
 
 static void msg_typed(char *line)
 {
+    // printf("here\n");
+    unsigned char *plaintext = (unsigned char *)line;
+    const EVP_CIPHER *cipher = EVP_aes_256_cbc(); // Use AES-256 CBC algorithm
+    unsigned char ciphertext[1024];               // Output buffer
+    unsigned char decryptedtext[1024];
+    const EVP_MD *md = EVP_sha256(); // Hash function to use
+    unsigned char key[32];           // Output buffer for derived key
+    size_t key_len = sizeof(key);    // Key length in bytes
+    // Derive key using HKDF
+    EVP_PKEY_CTX *pctx = EVP_PKEY_CTX_new_id(EVP_PKEY_HKDF, NULL);
+    EVP_PKEY_derive_init(pctx);
+    EVP_PKEY_CTX_set_hkdf_md(pctx, md);
+    EVP_PKEY_CTX_set1_hkdf_salt(pctx, NULL, 0); // No salt
+    EVP_PKEY_CTX_set1_hkdf_key(pctx, server_sharedSec_key_global, 1232);
+    EVP_PKEY_derive(pctx, key, &key_len);
+    EVP_PKEY_CTX_free(pctx);
 
-    // size_t pkey_len;
-    // if (recv(sockfd, &pkey_len, sizeof(int), 0) < 0)
-    // {
-    //     perror("recv failed");
-    //     exit(1);
-    // }
+    const int iv_len = EVP_CIPHER_iv_length(cipher); // iv_len will be 16 (128 bits)
+    unsigned char iv[iv_len];                        // Allocate space for the IV
+    memcpy(iv, key, iv_len);
 
-    // char pkey_buff[pkey_len];
-    // if (recv(sockfd, pkey_buff, pkey_len, 0) < 0)
-    // {
-    //     perror("recv failed");
-    //     exit(1);
-    // }
-    // // pubkey_str[len] = '\0';
+    int decryptedtext_len, ciphertext_len;
+    ciphertext_len = encrypt(plaintext, strlen((char *)plaintext), key, iv, ciphertext);
+    // printf("key:");
+    // BIO_dump_fp(stdout, (const char *)key, 32);
+    // printf("iv:");
+    // BIO_dump_fp(stdout, (const char *)iv, 16);
+    // printf("Ciphertext:");
+    //BIO_dump_fp(stdout, (const char *)ciphertext, ciphertext_len);
 
-    // RSA *pubkey = NULL;
-    // BIO *bio = BIO_new_mem_buf(pkey_buff, pkey_len);
-    // if (bio)
-    // {
-    //     pubkey = PEM_read_bio_RSAPublicKey(bio, NULL, NULL, NULL);
-    //     BIO_free(bio);
-    // }
-    // else
-    // {
-    //     // error handling
-    // }
-    // unsigned char encrypted[2048];
-    // size_t encrypted_len = RSA_public_encrypt(strlen(line), (const unsigned char*)line, encrypted, pubkey, RSA_PKCS1_PADDING);
-    // if (encrypted_len == -1)
-    
-    // {
-    //     printf("Error encrypting data.\n");
-    //     exit(1);
-    // }
-
+    int bytes_sent;
+    if ((bytes_sent = send(sockfd, key, sizeof(key), 0)) == -1)
+        error("send failed");
+    if ((bytes_sent = send(sockfd, iv, sizeof(iv), 0)) == -1)
+        error("send failed");
+    if ((bytes_sent = send(sockfd, &ciphertext_len, sizeof(ciphertext_len), 0)) == -1)
+        error("send failed");
     string mymsg;
     if (!line)
     {
@@ -520,8 +618,9 @@ static void msg_typed(char *line)
             mymsg = string(line);
             transcript.push_back("me: " + mymsg);
             ssize_t nbytes;
-            if ((nbytes = send(sockfd, line, mymsg.length(), 0)) == -1)
+            if ((nbytes = send(sockfd, ciphertext, ciphertext_len, 0)) == -1)
                 error("send failed");
+            //printf("success!\n");
         }
         pthread_mutex_lock(&qmx);
         mq.push_back({false, mymsg, "me", msg_win});
@@ -827,47 +926,49 @@ void *cursesthread(void *pData)
 
 void *recvMsg(void *)
 {
-    // /*BIO *bio = BIO_new(BIO_s_mem());
-    // if (!bio)
-    //     exit(1);
-    // /* first generate a key */
-    // RSA *keys = RSA_new();
-    // if (!keys)
-    //     exit(1);
-    // BIGNUM *e = BN_new();
-    // if (!e)
-    //     exit(1);
-    // BN_set_word(e, RSA_F4); /* e = 65537  */
-    // /* NOTE: if you have an old enough openssl library, you might
-    //  * have to setup the random number generator before this call: */
-    // int r = RSA_generate_key_ex(keys, 2048, e, NULL);
-    // if (r != 1)
-    //     exit(1);
-    // PEM_write_bio_RSA_PUBKEY(bio, keys);
-    // char *pkey_buff[2048];
 
-    // size_t pkey_len = BIO_get_mem_data(bio, NULL);
+    const EVP_CIPHER *cipher = EVP_aes_256_cbc(); // Use AES-256 CBC algorithm
+    unsigned char ciphertext[1024];               // Output buffer
+    unsigned char decryptedtext[1024];
+    unsigned char key[32];          // Output buffer for derived key
+    memset(key, 0x00, sizeof(key)); // Zero out key buffer
+    size_t key_len = sizeof(key);   // Key length in bytes
 
-    // if (send(sockfd, &pkey_len, sizeof(pkey_len), 0) == -1)
-    // {
-    //     perror("send length failed");
-    //     exit(1);
-    // }
-
-    // if (send(sockfd, pkey_buff, pkey_len, 0) == -1)
-    // {
-    //     error("error failed to send");
-    // }
-    
+    const int iv_len = EVP_CIPHER_iv_length(cipher); // iv_len will be 16 (128 bits)
+    unsigned char iv[iv_len];                        // Allocate space for the IV
+    memcpy(iv, key, iv_len);
+    int decryptedtext_len, ciphertext_len;
 
     size_t maxlen = 256;
     char msg[maxlen + 1];
     ssize_t nbytes;
     while (1)
     {
-        if ((nbytes = recv(sockfd, msg, maxlen, 0)) == -1)
+        if ((nbytes = recv(sockfd, key, sizeof(key), 0)) == -1)
             error("recv failed");
-        msg[nbytes] = 0; /* make sure it is null-terminated */
+        if ((nbytes = recv(sockfd, iv, sizeof(iv), 0)) == -1)
+            error("recv failed");
+        // printf("key:");
+        // BIO_dump_fp(stdout, (const char *)key, 32);
+        // printf("iv:");
+        // BIO_dump_fp(stdout, (const char *)iv, 16);
+        if ((nbytes = recv(sockfd, &ciphertext_len, sizeof(ciphertext_len), 0)) == -1)
+            error("recv failed");
+        // printf("cipherlen:%d\n", ciphertext_len);
+        if ((nbytes = recv(sockfd, ciphertext, ciphertext_len, 0)) == -1)
+            error("recv failed");
+        // printf("Ciphertext is:\n");
+        //print ciphertext
+        //BIO_dump_fp(stdout, (const char *)ciphertext, ciphertext_len);
+        /* Decrypt the ciphertext */
+        decryptedtext_len = decrypt(ciphertext, ciphertext_len, key, iv, decryptedtext);
+        // printf("%s\n",ciphertext);
+        /* Add a NULL terminator. We are expecting printable text */
+        decryptedtext[decryptedtext_len] = '\0';
+
+        //printf("%d\n", ciphertext_len);
+        memcpy(msg, decryptedtext, decryptedtext_len + 1);
+
         if (nbytes == 0)
         {
             /* signal to the main loop that we should quit: */
