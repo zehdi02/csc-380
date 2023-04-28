@@ -565,8 +565,22 @@ static void msg_win_redisplay(bool batch, const string &newmsg = "", const strin
 
 static void msg_typed(char *line)
 {
+
+    /////////////////////
+    // gen client's sk and pk, and also server's pk
+
+    /////////////////////
+    int bytes_sent;
+    ////////////////////
+
+    unsigned char hash[32]; /* change 32 to 64 if you use sha512 */
+    SHA256((unsigned char *)line, strlen(line), hash);
+    if ((bytes_sent = send(sockfd, hash, sizeof(hash), 0)) == -1)
+        error("send failed");
+    /////////////////////////
     // printf("here\n");
     unsigned char *plaintext = (unsigned char *)line;
+    // printf("%s\n",plaintext);
     const EVP_CIPHER *cipher = EVP_aes_256_cbc(); // Use AES-256 CBC algorithm
     unsigned char ciphertext[1024];               // Output buffer
     unsigned char decryptedtext[1024];
@@ -593,9 +607,8 @@ static void msg_typed(char *line)
     // printf("iv:");
     // BIO_dump_fp(stdout, (const char *)iv, 16);
     // printf("Ciphertext:");
-    //BIO_dump_fp(stdout, (const char *)ciphertext, ciphertext_len);
+    // BIO_dump_fp(stdout, (const char *)ciphertext, ciphertext_len);
 
-    int bytes_sent;
     if ((bytes_sent = send(sockfd, key, sizeof(key), 0)) == -1)
         error("send failed");
     if ((bytes_sent = send(sockfd, iv, sizeof(iv), 0)) == -1)
@@ -620,7 +633,7 @@ static void msg_typed(char *line)
             ssize_t nbytes;
             if ((nbytes = send(sockfd, ciphertext, ciphertext_len, 0)) == -1)
                 error("send failed");
-            //printf("success!\n");
+            // printf("success!\n");
         }
         pthread_mutex_lock(&qmx);
         mq.push_back({false, mymsg, "me", msg_win});
@@ -927,6 +940,9 @@ void *cursesthread(void *pData)
 void *recvMsg(void *)
 {
 
+    unsigned char hash[32];   /* change 32 to 64 if you use sha512 */
+    unsigned char r_hash[32]; // recieved hash to auth mess
+
     const EVP_CIPHER *cipher = EVP_aes_256_cbc(); // Use AES-256 CBC algorithm
     unsigned char ciphertext[1024];               // Output buffer
     unsigned char decryptedtext[1024];
@@ -940,10 +956,14 @@ void *recvMsg(void *)
     int decryptedtext_len, ciphertext_len;
 
     size_t maxlen = 256;
+
     char msg[maxlen + 1];
     ssize_t nbytes;
     while (1)
     {
+
+        if ((nbytes = recv(sockfd, r_hash, 32, 0)) == -1)
+            error("send failed");
         if ((nbytes = recv(sockfd, key, sizeof(key), 0)) == -1)
             error("recv failed");
         if ((nbytes = recv(sockfd, iv, sizeof(iv), 0)) == -1)
@@ -958,25 +978,27 @@ void *recvMsg(void *)
         if ((nbytes = recv(sockfd, ciphertext, ciphertext_len, 0)) == -1)
             error("recv failed");
         // printf("Ciphertext is:\n");
-        //print ciphertext
-        //BIO_dump_fp(stdout, (const char *)ciphertext, ciphertext_len);
+        // print ciphertext
+        // BIO_dump_fp(stdout, (const char *)ciphertext, ciphertext_len);
         /* Decrypt the ciphertext */
         decryptedtext_len = decrypt(ciphertext, ciphertext_len, key, iv, decryptedtext);
         // printf("%s\n",ciphertext);
         /* Add a NULL terminator. We are expecting printable text */
         decryptedtext[decryptedtext_len] = '\0';
+        // printf("%s\n", decryptedtext);
 
-        //printf("%d\n", ciphertext_len);
-        memcpy(msg, decryptedtext, decryptedtext_len + 1);
+        SHA256((unsigned char *)msg, strlen(msg), hash);
+        if (memcmp(r_hash, hash, 32) == 0)
+            // printf("hi\n");
 
-        if (nbytes == 0)
-        {
-            /* signal to the main loop that we should quit: */
-            should_exit = true;
-            return 0;
-        }
+            if (nbytes == 0)
+            {
+                /* signal to the main loop that we should quit: */
+                should_exit = true;
+                return 0;
+            }
         pthread_mutex_lock(&qmx);
-        mq.push_back({false, msg, "Mr Thread", msg_win});
+        mq.push_back({false, (char *)decryptedtext, "Mr Thread", msg_win});
         pthread_cond_signal(&qcv);
         pthread_mutex_unlock(&qmx);
     }
