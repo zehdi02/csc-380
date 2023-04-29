@@ -987,18 +987,22 @@ void *recvMsg(void *)
         decryptedtext[decryptedtext_len] = '\0';
         // printf("%s\n", decryptedtext);
 
-        SHA256((unsigned char *)msg, strlen(msg), hash);
-        if (memcmp(r_hash, hash, 32) == 0)
+        SHA256((unsigned char *)decryptedtext, decryptedtext_len, hash);
+        //printf("%s\n|||||||||||||||||||||||%s\n", r_hash, hash);
             // printf("hi\n");
 
-            if (nbytes == 0)
+            if (nbytes == -1)
             {
                 /* signal to the main loop that we should quit: */
                 should_exit = true;
                 return 0;
             }
         pthread_mutex_lock(&qmx);
-        mq.push_back({false, (char *)decryptedtext, "Mr Thread", msg_win});
+		if(memcmp(r_hash, hash, 32) == 0){
+        	mq.push_back({false, (char *)decryptedtext, "Mr Thread(Mess Auth)", msg_win});
+		}
+		else
+			mq.push_back({false, (char *)decryptedtext, "Mr Thread", msg_win});
         pthread_cond_signal(&qcv);
         pthread_mutex_unlock(&qmx);
     }
