@@ -1,0 +1,43 @@
+Alhamza Muswara,
+Rezwan Ahmed,
+Melchizedek De Castro
+CSC 38000
+William Skeith
+Secure Chat Phase II – Documentation
+Assumption
+In order to provide a secure chat environment, certain assumptions are relied on for the chat program to function and ensure its security.
+Our chat program implements a handshake protocol to incorporate the exchange of public keys between the client and the server. The handshake protocol includes a Diffie-Hellman key exchange. This means that pre-existing public keys are not required. Instead, during the handshake protocol and Diffie-Hellman key exchange, both the client and server simultaneously generate their own public-private key. The public keys of server and client are then exchanged correspondingly. The client and the server can securely derive a shared secret key. The shared secret key is then used to authenticate the server and client, and also encrypt the two parties’ messages.
+Assuming that the adversary does not have the access to any third-party tools or resources necessary to orchestrate attacks over the network such as eavesdropping, Denial of Service, or injection attacks, the chat program is able to protect against potential attacks.
+
+Types of attacks the chat program is vulnerable:
+Buffer overflow attacks
+
+Claims	
+Confidentiality:
+DH Key Exchange => EVP_aes_ Encryption  &  EVP_sha256=>  EVP Decryption =>  EVP_sha256 => Compare hash objects 
+Integrity:
+Write about message authentication.
+Explain the Msg Auth Codes (MAC) to verify the integrity of msgs
+Possible vulnerabilities:
+Program outputs openssl error on [Ctrl+c] which may signal padding issues, incorrect initialization of cipher algorithm, or data corruption. 
+Once parties exchange messages at least once the last program to close after [Ctrl+c] keeps repeating the last messages received.
+When a user holds down an input key for 60 seconds(around > 800 characters) and sends the message, stack “smashing is detected” and terminated, and “buffer overflow” detected.
+Mutual Authentication:
+Mutual authentication between the server and the client is achieved through the use of handshake protocol and the Diffie-Hellman key exchange. The handshake protocol begins with a three-way handshake process to establish a connection. The server and the client exchange SYN (synchronize) and ACK (acknowledge) messages to synchronize and confirm the connection. 
+After the connection is established, the Diffie-Hellman key exchange algorithm is used to generate a shared secret key between the server and the client. Both parties generate their public and private keys. The server sends its public key to the client, and the client sends its public key to the server. Both parties then compute the shared secret key using their respective private keys and the received public keys. If the shared keys match, it indicates that both parties have successfully authenticated each other and have the same shared secret key.
+
+How to prevent adversary attacks:
+Utilising strong encryption algorithms to protect the confidentiality and integrity of the data exchanged between the server and the client. This prevents eavesdropping and tampering by adversaries.
+Use of secure protocols, such as Transport Layer Security (TLS), which provide authentication, encryption, and integrity checks for the communication channel. 
+Hashing algorithms can be used to securely store and transmit sensitive information, such as passwords. Hashing converts passwords into irreversible values, making it difficult for adversaries to obtain the original passwords even if they gain access to the stored data.
+
+
+Malicious Communicating Party:
+cover the case of a malicious communicating party (think about the worst thing that could happen if you start a session with someone running a modified, evil version of your chat program).
+Confidentiality:
+Once either party enters a message, the plaintext is placed into a hash function and sent to the other party. Next encrypt the plaintext with aes encryption using the shared DH secret key as the symmetric key. The receiver will decrypt the cipher text and place the deciphered into the same hash function SHA256(EVP_sha256). The receiver will compare the hash object that was received and the one that was created from the deciphered text to ensure the message sent and the message received is the same.
+
+
+
+
+
