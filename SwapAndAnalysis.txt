@@ -1,0 +1,17 @@
+Alhamza Muswara
+Rezwan Ahmed
+Melchizedek De Castro				
+Swapped with: Chenhao Li’s Group
+CSC 38000
+Secure Chat - Swap and Analyze Report
+
+Findings:
+Concern 1:When a long message is entered the chat program freezes. This happens because the message length is longer than the buffer size, this is known as buffer overflow. The buffers in hmacClient and hmacServer of the corresponding functions could be exploited by overflowing the buffers and crafting malicious inputs that can execute unauthorized code from the attacker.
+Recommendation: One solution to buffer overflow is to increase the length of the buffer size, but buffer can still be overflown by a longer message. Another solution would be to only extract the message up to the buffer size and ignore anything extra which is done by input validation.  A better solution would be to limit the message length to be as long as the buffer size, thus preventing users from inputting anymore characters after the buffer is full.
+==================================================================
+Concern 2: Their claim of removing the HMAC (their functions hmacClient and hmacServer, and other function calls of those) doesn’t actually prevent the incoming message from being sent. The chat still functions as intended and the messages are still being exchanged.
+==================================================================
+
+Concern 3: After the handshake protocol, the program performs Diffie Hellman protocol but sends through a socket, secret key no longer secret. The secret key is left out for the rest of the program and is not used.
+==================================================================
+Validity of Encryption: Key exchange protocols are used to achieve forward secrecy, demonstrating that RSA encryption operates as advertised. Different encryptions of the same text demonstrate this. Program adds encryption .
